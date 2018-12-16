@@ -1,0 +1,133 @@
+El Sistema Unico de Boleto Electrónico (SUBE), permite a los usuarios usar una tarjeta para abonar
+los pasajes de diversos transportes reemplanzo de esta forma la necesidad de utilizar dinero el efectivo.
+
+El sistema SUBE implementar una API Rest con dos endpoints uno para compra/registracion de tarjetas
+y otro para el pago. En forma resumida el sistema funciona de la siguiente forma:
+
+* El usuario compra una tarjeta física y luego a la registra en el sistema
+* Una vez la tarjeta está registrada el usuario le carga crédito
+* Cuando el usuario viaja en un transporte paga el boleto usando la tarjeta SUBE lo cual hace decrementar el crédito en la tarjeta
+
+Existen una seria de reglas que se aplican al momento del pago que impactan el monto final abonado:
+
+* Si el usuario aborda dos en un periódo de 2 horas, entonces recibe un descuento del 50% en el segundo boleto
+* Si el usuario registro la tarjeta como estudiante, entonces recibe en descuento del 70% en los viajes que realice de lunes a viernes
+* Si el usuario registró la tarjeta como jubilado, entonces recibe en descuento del 40% en todos los viajes
+* Si el usuario registró la tarjeta como extranjero, entonces el boleto le cuenta un 20% más
+* Si el usuario registró la tarjeta como docente, entonces el boleto le cuenta un 30% menos de marzo a diciembre
+* Si la tarjeta está bloqueada, entonces no puedo utilizarse para pagar boletos
+
+!2 Ejemplos
+
+!***> '''glue code'''
+
+!define TEST_SYSTEM {slim}
+
+|import |
+|sube|
+
+!|EnvFixture|
+| target url?|
+|$VALUE=|
+*!
+
+!*> '''Classpath'''
+${maven.classpath}
+!path ${RootPath}/financialbike.jar
+*!
+
+
+!3 Caso 1: pago con saldo
+
+!|script  |SubeFixture                          |
+|tarjeta  |juangomez           | con saldo | 10 |
+|check    | saldo              | 10             |
+|pagar    | 5                                   |
+|check    | saldo      | 5                      |
+
+
+!3 Caso 2: pago con saldo tarifa social
+
+!|script  |SubeFixture                          |
+|tarjeta  |juangomez           | con saldo | 50 |
+|check    | saldo              | 50             |
+|registrar|jubilado                             |
+|pagar    | 10                                  |
+|check    | cobrado    | 6                      |
+|check    | saldo      | 44                     |
+
+
+!3 Caso 3: pago con saldo tarifa extranjero
+
+!|script  |SubeFixture                          |
+|tarjeta  |juangomez           | con saldo | 50 |
+|registrar|extrajero                            |
+|pagar    | 10                                  |
+|check    | cobrado    | 12                     |
+|check    | saldo      | 38                     |
+
+
+!3 Caso 4: pago con saldo insuficiente
+
+!|script  |SubeFixture                          |
+|tarjeta  |juangomez           | con saldo | 1  |
+|pagar    | 10                                  |
+|check    | cobrado    | 0                      |
+|check    | saldo      | 1                      |
+
+!3 Caso 5: pago con tarjeta bloqueda
+
+!|script  |SubeFixture                          |
+|tarjeta  |juangomez           | con saldo | 10 |
+|registrar|bloqueado,docente                    |
+|pagar    | 10                                  |
+|check    | cobrado    | 0                      |
+|check    | saldo      | 10                     |
+
+
+!3 Caso 6: consultas
+
+!|script  |SubeFixture                          |
+|tarjeta  |juangomez           | con saldo | 10 |
+|registrar|bloqueado,docente                    |
+|consultar|juangomez                            |
+|check    | saldo      | 10                     |
+|check    | modificadores|bloqueado,docente     |
+
+
+!2 Especificación de protocolo
+
+!3 Crear tarjeta:
+
+Request: POST /tarjetas {"monto":10,"id":"juangomez"}
+Response: 201 {"saldo":10,"id":"juangomez"}
+
+Nota: si la tarjeta ya existe, la resetea, o sea, es como se destruyera y se volviera a crear
+
+!3 Actualizar tarjeta
+
+Request: PUT /tarjetas {"modificador":"jubilado","id":"juangomez"}
+
+Response: 200 {"saldo":10,"id":"juangomez"}
+
+!3 Carga de saldo
+
+Request PUT /tarjetas {"monto_a_cargar":20,"id":"juangomez"}
+
+Response: 200 {"saldo":30,"id":"juangomez"}
+
+
+!3 Pago de boleto
+
+Request: POST /pagos {"monto":1,"id":"juangomez"}
+
+Response: 201 {"cobrado":1, "saldo":9,"id":"juangomez"}}
+
+!3 Consulta de tarjetas
+Request: GET /tarjetas: devuelve la lista de tarjetas
+
+Response: 200 {"tarjetas": [{"id":juanperez, "saldo":100}, {"id":"mariogarcia", "saldo": 90} ] }
+
+Request: GET /tarjetas/{id}: devuelte todos los datos de tarjeta indicada
+
+Response: 200 {"id":"juanperez", "saldo":100, "modificadores":"jubilado, docente" }
